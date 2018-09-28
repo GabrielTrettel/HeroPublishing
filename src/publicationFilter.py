@@ -1,16 +1,21 @@
-import threading
-from collections import deque
+#!/usr/bin/python3
 from datetime import datetime
+from tqdm import tqdm
+from Publication import PublicationList
 import time
 import xml.etree.ElementTree as ET
 import pickle
 import os
 import sys
-from Publication import PublicationList
 
 
-def congressFilter(congress_publications, file="0000325690951570.xml"):
-    root = ET.parse(file).getroot()
+def congressFilter(file="0000325690951570.xml"):
+    congrr_list = list()
+    try:
+        root = ET.parse(file).getroot()
+    except:
+        print(file, "congress can't be parsed")
+        return congrr_list
 
     for congress in root.iter('TRABALHO-EM-EVENTOS'):
         authors_list = list()
@@ -24,13 +29,17 @@ def congressFilter(congress_publications, file="0000325690951570.xml"):
         vehicle = congress.find('DETALHAMENTO-DO-TRABALHO').get('TITULO-DOS-ANAIS-OU-PROCEEDINGS')
         serial  = congress.find('DETALHAMENTO-DO-TRABALHO').get('ISBN')
 
-        congress_publications.add(authors_list, title, int(year), int(id_publ), "Congress", n_cnpq, serial, vehicle)
+        congrr_list.append([authors_list, title, year, id_publ, "Congress", n_cnpq, serial, vehicle])
+    return congrr_list
 
-    return congress_publications
+def journalFilter(file="0000325690951570.xml"):
+    jour_list = list()
+    try:
+        root = ET.parse(file).getroot()
+    except:
+        print(file, "journal can't be parsed")
+        return jour_list
 
-
-def journalFilter(journal_publications, file="0000325690951570.xml"):
-    root = ET.parse(file).getroot()
 
     for journal in root.iter('ARTIGO-PUBLICADO'):
         authors_list = list()
@@ -44,71 +53,46 @@ def journalFilter(journal_publications, file="0000325690951570.xml"):
         vehicle = journal.find("DETALHAMENTO-DO-ARTIGO").get("TITULO-DO-PERIODICO-OU-REVISTA")
         serial  = journal.find("DETALHAMENTO-DO-ARTIGO").get("ISSN")
 
-        journal_publications.add(authors_list, title, int(year), int(id_publ), "Journal", n_cnpq, serial, vehicle)
+        jour_list.append([authors_list, title, year, id_publ, "Journal", n_cnpq, serial, vehicle])
+    return jour_list
 
-    return journal_publications
-
-
-def authorsFilter(input_dir="", output_dir="", thr_qtd=1):
-    congress_publications = PublicationList("Congress")
-    journal_publications  = PublicationList("Journal")
-
-#=========================threader=========================#
-    def threader(queue):
-        while(len(queue) > 0):
-            try:
-                file = str(queue.pop())
-                journalFilter(journal_publications, input_dir + file)
-                congressFilter(congress_publications, input_dir + file)
-            except:
-                break
-#=========================threader=========================#
-
-    print ('Begin processing     : {}'.format(datetime.now()))
+def authorsFilter(input_dir="", output_dir=""):
     begin = time.time()
+    print ('Begin processing     : {}\n'.format(datetime.now()))
+    authors_list = os.listdir(input_dir)
 
-    authors_queue = deque(os.listdir(input_dir))
+    pbar = tqdm(total=len(authors_list), ncols=100)
 
-    threads = []
-    for thread in range(thr_qtd):
-        thread = threading.Thread(target=threader, args=(authors_queue,))
-        thread.start()
-        threads.append(thread)
+    for author in authors_list:
+        if author[0] == ".": continue
+        pbar.update(1)
+        publications = PublicationList()
+        cong_aut_list = congressFilter(input_dir + author)
+        jour_aut_list = journalFilter(input_dir + author)
+        if len(cong_aut_list)>=1 and len(jour_aut_list)>=1:
+            publications.add(congress_list=cong_aut_list, journal_list=jour_aut_list)
+            publications.dump(output_dir + author[:-4])
 
-    for thread in threads:
-        thread.join()
 
-
-    congress_publications.write(output_dir)
-    congress_publications.dump(output_dir)
-
-    journal_publications.write(output_dir)
-    journal_publications.dump(output_dir)
-
-    print('End of processing    : {}\nElapsed time         : {:.5} s\n'.format(datetime.now(), time.time()-begin))
-
+    # journal_publications.write(output_dir + author[:-4] + '-')
+    # congress_publications.write(output_dir + author[:-4] + '-')
+    pbar.close()
+    print('\nEnd of processing    : {}\nElapsed time         : {:.5} s\n'.format(datetime.now(), time.time()-begin))
 
 
 if __name__ == "__main__":
-
     if len(sys.argv) > 1:
-        input_dir = sys.argv[1] + "/"
-        output_dir   = sys.argv[1] + "-output/"
+        input_dir  = sys.argv[1] + "/"
+        output_dir = sys.argv[1] + "-output/"
 
         try:
             os.mkdir(output_dir)
-            print("\nCreating {}\n".format(output_dir))
-
+            print("Creating {}\n".format(output_dir))
         except:
-            print("\nWarning, some files may be overwritten")
+            print("Warning, some files may be overwritten")
             print("Using directory already created: {} \n".format(os.getcwd() + "/" + output_dir ))
 
-
-        thr = 1
-        if len(sys.argv) > 2:
-            thr = int(sys.argv[2])
-
-        authorsFilter(input_dir, output_dir, thr)
+        authorsFilter(input_dir, output_dir)
 
     else:
         print("Invalid arguments\n")

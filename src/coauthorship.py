@@ -1,70 +1,67 @@
+#!/usr/bin/python3
 import pickle
 import sys
 from datetime import datetime
-from Publicacao import PublicationList
+from Publication import PublicationList
 import time
 import os
-from collections import deque
-import threading
+from tqdm import tqdm
+from graph import Graph
 
+def authors_matching(journal_publ, congress_publ):
+    return sum([1 for journal_autor in journal_publ.get('authors') if journal_autor in congress_publ.get('authors')])
 
-# Versão do "relacao_autoral.py" com funcionamento multithread
-
-def requisitos(journal, congress):
+def requirements(publ1, publ2):
     MAXIMUM_TIME_BETWEEN_PUBLICATIONS = 5
+    minimum_coauthorship = 2
+    time_between_publications = abs( int(publ2.get('year')) - int(publ1.get('year')))
+    coauthorship = authors_matching(publ1, publ2)
 
-    time_between_publications = abs( congress.year - journal.year )
 
-    if( len(journal.authors) >= 2 and len(congress.authors) >= 2 ):
-        if( time_between_publications <= MAXIMUM_TIME_BETWEEN_PUBLICATIONS ):
-            return True
+    if publ1 == publ2: return False
+    if coauthorship > minimum_coauthorship and time_between_publications <= MAXIMUM_TIME_BETWEEN_PUBLICATIONS:
+        return True
 
     return False
 
-def threader(input):
-    congress_list = input[1]
-    journal_list = input[2]
-    graph = ""
-    file = input[0]
 
-    while len(congress_list) > 0:
-        try:
-            congress = congress_list.pop()
+def coauthorshipGraph(file, publications_dict):
+    edges = {'weight':'INTEGER'}
+    graph = Graph(serial='VARCHAR', custom_edges=edges)
 
-            for artigo in journal_list:
-                co_autoria = all(autor in artigo.authors  for autor in congress.authors)
-                if co_autoria and requisitos(congress, artigo):
-                    # O grafo é orientado da correlação entre authors que publicaram juntos
-                    # em congress e posteriormente em revista num tempo maximo MAXIMUM_TIME_BETWEEN_PUBLICATIONS
-                    graph += "\n\t{} -> {}".format(str(congress.id), str(artigo.id))
+    congress_list = publications_dict['Congress']
+    journal_list  = publications_dict['Journal']
 
-        except:
-            break
+    for publication in congress_list.union(journal_list):
+        graph.addNode(name=publication.get('id'),
+                      label=publication.get('type'),
+                      serial=publication.get('serial'))
 
-    file.writelines(graph)
+    for congress in congress_list:
+        for journal in journal_list:
+            if requirements(congress, journal):
+                graph.addLink(node1=congress.get('id'),
+                              node2=journal.get('id'),
+                              weight=authors_matching(journal, congress),
+                              label="journal-congress")
 
-def coauthorshipDigraph(file, journal_list, congress_list, thr):
-    congress_list = deque(congress_list)
-    file = open(file, 'w')
-    input = [file, fila_congress_list, journal_list]
+    for congress1 in congress_list:
+        for congress2 in congress_list:
+            if requirements(congress1, congress2):
+                graph.addLink(node1=congress1.get('id'),
+                              node2=congress2.get('id'),
+                              weight=authors_matching(congress1, congress2),
+                              label="congress-congress")
 
-    txt = "digraph G {"
-    file.writelines(txt)
+    for journal1 in journal_list:
+        for journal2 in journal_list:
+            if requirements(journal1, journal2):
+                graph.addLink(node1=journal1.get('id'),
+                              node2=journal2.get('id'),
+                              weight=authors_matching(journal1, journal2),
+                              label="journal-journal")
 
-
-    threads = []
-    for thread in range(thr):
-        thread = threading.Thread(target=threader, args=(input,))
-        thread.start()
-        threads.append(thread)
-
-    for thread in threads:
-        thread.join()
-
-    txt = "\n}"
-    file.writelines(txt)
-    file.close()
-
+    graph.dump(file)
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
@@ -77,35 +74,19 @@ if __name__ == "__main__":
             print("Directory not found")
 
         inicio = time.time()
-        print ('\nBegin processing : {}'.format(datetime.now()))
+        print ('\nBegin processing   : {}'.format(datetime.now()))
 
-        found_congress = False
-        found_journal = False
-        journal_list = []
-        congress_list = []
+        pbar = tqdm(total=len(files_list), ncols=100)
         for file in files_list:
-            if file == "Congress.pkl" and found_congress == False:
-                found_congress = True
-                with open(input_dir + "/" + file, 'rb') as f1:
-                    journal_list = pickle.load(f1)
+            pbar.update(1)
+            if file[-4:] == ".pkl":
 
-            elif file == "Journal.pkl" and found_journal == False:
-                found_journal = True
-                with open(input_dir + "/" + file, 'rb') as f2:
-                    congress_list = pickle.load(f2)
+                output_dir = input_dir + "/../graphs/" + file[:-4] + 'coauthorship.gdf'
+                with open(input_dir + "/" + file, 'rb') as f:
+                    publications_dict = pickle.load(f)
 
-
-            if found_journal and found_congress:
-                found_congress = False
-                found_journal = False
-
-                output_dir = input_dir + "/" + 'co-authorship-digraphK-5.txt'
-
-                thr = 1
-                if len(sys.argv) > 2:
-                    thr = int(sys.argv[2])
-
-                digrafoCorrelacaoAutoral(output_dir, journal_list, congress_list, thr)
+                coauthorshipGraph(output_dir, publications_dict)
+        pbar.close()
 
         print('End of processing    : {}\nElapsed time         : {:.5} s\n'.format(datetime.now(), time.time()-inicio))
 
