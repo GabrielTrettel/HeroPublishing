@@ -1,6 +1,3 @@
-using Distributed
-using Combinatorics
-
 module MaxGrpFinder
 
 using Distributed
@@ -22,6 +19,7 @@ mutable struct Author
     publications :: AbstractArray{Publication}
     groups       :: Array
 end
+
 
 norm(x) = lowercase(string(strip(x)))
 
@@ -68,6 +66,7 @@ function producer!(ch::Channel, done::Channel)
     put!(done, 1)
 end
 
+
 function pertinency(seta, setb)
     for a in seta
         if !(a in setb) return false end
@@ -86,7 +85,6 @@ function qtd(n, dic)
 end
 
 
-
 function walk(author)
     walk_txt = "n_combinations\tbiggest_walk\tn_of_groups_in_tbiggest_walk\n"
     print("\nParsing $(author.cnpq) having $(length(author.groups)) coauthors and $(length(author.publications)) publ \n")
@@ -94,21 +92,20 @@ function walk(author)
         biggest_walk = 0
         n_of_biggest_walks = 0
 
-        walk = 0
         total = binomial(length(author.groups), n)
         println("\n\nTotal of combinations = $total")
 
-        prog =  Progress(total, desc="Combinations veryfied n=$n: ",
+        prog =  Progress(total, desc="Combinations veryfied n=$(n+1): ",
                         barglyphs=BarGlyphs('|','█', ['▁' ,'▂' ,'▃' ,'▄' ,'▅' ,'▆', '▇'],' ','|',),
                         barlen=10)
         x = 0
         for group in combinations(author.groups, n)
-            x+=1
             ProgressMeter.next!(prog; showvalues = [(:x,x)])
-
+            x+=1
+            walk = 0
             last_yr = 0
 
-            @simd for publication in author.publications
+            for publication in author.publications
                 if pertinency(Set(group), publication.authors) && publication.year > last_yr
                     last_yr = publication.year
                     walk += 1
@@ -116,14 +113,13 @@ function walk(author)
             end
             if walk > biggest_walk
                 biggest_walk = walk
-                n_of_biggest_walks = 0
-            elseif walk == biggest_walk
+                n_of_biggest_walks = 1
+            elseif walk == biggest_walk && walk != 0
                 n_of_biggest_walks += 1
             end
-
         end
         ProgressMeter.finish!(prog)
-        walk_txt *= "$n\t$biggest_walk\t$n_of_biggest_walks\n"
+        walk_txt *= "$(n+1)\t$biggest_walk\t$n_of_biggest_walks\n"
     end
 
     return walk_txt
@@ -135,7 +131,6 @@ function consummer!(ch::Channel, done::Channel)
 
     for author in ch
         if author == "Q" break end
-        # println(author.groups, "\n================================\n")
         steps = walk(author)
 
         io = open(folder*author.cnpq, "w")
@@ -148,8 +143,8 @@ end
 
 end #module
 
-using .MaxGrpFinder
 
+using .MaxGrpFinder
 function runner()
     nworkers = 3
     conductor = Channel(300)
@@ -158,13 +153,7 @@ function runner()
     @async producer!(conductor, done)
     consummer!(conductor, done)
 
-    # for i in 1:nworkers
-    #     # @async fetch(j)
-    # end
-
-    # @async fetch(p)
-    # fetch(p)
-    for i=1:nworkers+1 take!(done) end
+    # for i=1:1 take!(done) end
 end
 
 runner()
