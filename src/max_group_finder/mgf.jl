@@ -18,6 +18,7 @@ mutable struct Author
     cnpq         :: String
     publications :: AbstractArray{Publication}
     groups       :: Array
+    n_max_coauth :: Int64
 end
 
 
@@ -33,7 +34,7 @@ function producer!(ch::Channel, done::Channel)
         a_index = 0
         publications::AbstractArray = []
         groups = Set()
-
+        max_authors = 0
         for line in readlines(folder*file)
             au = Set()
             yr, authors, _ = map(norm, split(line, " #@# "))
@@ -55,12 +56,15 @@ function producer!(ch::Channel, done::Channel)
             catch
                 continue
             end
-            # println(new_authors)
+            if length(new_authors) > max_authors
+                max_authors = length(new_authors)
+            end
+
             union!(groups, new_authors)
             push!(publications, Publication(yr, new_authors))
         end
 
-        put!(ch, Author(file, publications, collect(groups)))
+        put!(ch, Author(file, publications, collect(groups), max_authors))
     end
     put!(ch, "Q")
     put!(done, 1)
@@ -85,40 +89,50 @@ function qtd(n, dic)
 end
 
 
+function verify_comb(author, n)
+    biggest_walk = 0
+    n_of_biggest_walks = 0
+
+    total = binomial(length(author.groups), n)
+    println("\n\nTotal of combinations = $total")
+
+    prog =  Progress(total, desc="Combinations veryfied n=$(n+1): ",
+                    barglyphs=BarGlyphs('|','█', ['▁' ,'▂' ,'▃' ,'▄' ,'▅' ,'▆', '▇'],' ','|',),
+                    barlen=10)
+    x = 0
+    for group in combinations(author.groups, n)
+        ProgressMeter.next!(prog; showvalues = [(:x,x)])
+        x+=1
+        walk = 0
+        last_yr = 0
+
+        for publication in author.publications
+            if Set(group) == publication.authors && publication.year > last_yr
+                last_yr = publication.year
+                walk += 1
+            end
+        end
+        if walk > biggest_walk
+            biggest_walk = walk
+            n_of_biggest_walks = 1
+        elseif walk == biggest_walk && walk != 0
+            n_of_biggest_walks += 1
+        end
+    end
+    ProgressMeter.finish!(prog)
+    return biggest_walk, n_of_biggest_walks
+end
+
+
 function walk(author)
     walk_txt = "n_combinations\tbiggest_walk\tn_of_groups_in_tbiggest_walk\n"
     print("\nParsing $(author.cnpq) having $(length(author.groups)) coauthors and $(length(author.publications)) publ \n")
     for n in 1:9
-        biggest_walk = 0
-        n_of_biggest_walks = 0
-
-        total = binomial(length(author.groups), n)
-        println("\n\nTotal of combinations = $total")
-
-        prog =  Progress(total, desc="Combinations veryfied n=$(n+1): ",
-                        barglyphs=BarGlyphs('|','█', ['▁' ,'▂' ,'▃' ,'▄' ,'▅' ,'▆', '▇'],' ','|',),
-                        barlen=10)
-        x = 0
-        for group in combinations(author.groups, n)
-            ProgressMeter.next!(prog; showvalues = [(:x,x)])
-            x+=1
-            walk = 0
-            last_yr = 0
-
-            for publication in author.publications
-                if pertinency(Set(group), publication.authors) && publication.year > last_yr
-                    last_yr = publication.year
-                    walk += 1
-                end
-            end
-            if walk > biggest_walk
-                biggest_walk = walk
-                n_of_biggest_walks = 1
-            elseif walk == biggest_walk && walk != 0
-                n_of_biggest_walks += 1
-            end
+        biggest_walk, n_of_biggest_walks = (0,0)
+        if n <= author.n_max_coauth
+            biggest_walk, n_of_biggest_walks = verify_comb(author, n)
         end
-        ProgressMeter.finish!(prog)
+
         walk_txt *= "$(n+1)\t$biggest_walk\t$n_of_biggest_walks\n"
     end
 
