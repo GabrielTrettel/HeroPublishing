@@ -88,12 +88,13 @@ end
 
 
 function walk(author)
-    walk = "n_combinations\tbiggest_walk\tn_of_groups_in_tbiggest_walk\n"
+    walk_txt = "n_combinations\tbiggest_walk\tn_of_groups_in_tbiggest_walk\n"
     print("\nParsing $(author.cnpq) having $(length(author.groups)) coauthors and $(length(author.publications)) publ \n")
     for n in 1:9
         biggest_walk = 0
+        n_of_biggest_walks = 0
 
-        frequecy = Dict()
+        walk = 0
         total = binomial(length(author.groups), n)
         println("\n\nTotal of combinations = $total")
 
@@ -105,26 +106,27 @@ function walk(author)
             x+=1
             ProgressMeter.next!(prog; showvalues = [(:x,x)])
 
-            push!(frequecy, group => 0)
             last_yr = 0
 
             @simd for publication in author.publications
                 if pertinency(Set(group), publication.authors) && publication.year > last_yr
                     last_yr = publication.year
-                    frequecy[group] += 1
+                    walk += 1
                 end
             end
-            if frequecy[group] > biggest_walk
-                biggest_walk = frequecy[group]
+            if walk > biggest_walk
+                biggest_walk = walk
+                n_of_biggest_walks = 0
+            elseif walk == biggest_walk
+                n_of_biggest_walks += 1
             end
+
         end
         ProgressMeter.finish!(prog)
-
-        qtd_in_bgst_walk = qtd(biggest_walk, frequecy)
-        walk *= "$n\t$biggest_walk\t$qtd_in_bgst_walk\n"
+        walk_txt *= "$n\t$biggest_walk\t$n_of_biggest_walks\n"
     end
 
-    return walk
+    return walk_txt
 end
 
 
@@ -154,7 +156,7 @@ function runner()
     done = Channel(nworkers)
 
     @async producer!(conductor, done)
-    @async consummer!(conductor, done)
+    consummer!(conductor, done)
 
     # for i in 1:nworkers
     #     # @async fetch(j)
