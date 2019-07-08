@@ -1,10 +1,11 @@
 using Distributed
-@everywhere using Combinatorics
+using Combinatorics
 
 module MaxGrpFinder
 
 using Distributed
 using Combinatorics
+using ProgressMeter
 
 
 export producer!,
@@ -30,21 +31,35 @@ function producer!(ch::Channel, done::Channel)
     all_files = readdir(folder)
 
     for file in all_files
-        # println("Parsing File $file")
+        name_to_number = Dict{String, Int64}()
+        a_index = 0
         publications::AbstractArray = []
         groups = Set()
+
         for line in readlines(folder*file)
             au = Set()
             yr, authors, _ = map(norm, split(line, " #@# "))
             authors = Set(map(norm, split(authors, ';')))
+            new_authors = Set()
+
+            for a in authors
+                if a in keys(name_to_number)
+                    push!(new_authors, name_to_number[a])
+                else
+                    push!(name_to_number, a=>a_index)
+                    a_index += 1
+                    push!(new_authors, name_to_number[a])
+                end
+            end
 
             try
                 yr = parse(Int64, yr)
             catch
                 continue
             end
-            union!(groups, authors)
-            push!(publications, Publication(yr, authors))
+            # println(new_authors)
+            union!(groups, new_authors)
+            push!(publications, Publication(yr, new_authors))
         end
 
         put!(ch, Author(file, publications, collect(groups)))
@@ -70,18 +85,30 @@ function qtd(n, dic)
 
 end
 
+
+
 function walk(author)
     walk = "n_combinations\tbiggest_walk\tn_of_groups_in_tbiggest_walk\n"
-    println("Parsing $(author.cnpq)")
+    print("\nParsing $(author.cnpq) having $(length(author.groups)) coauthors and $(length(author.publications)) publ \n")
     for n in 1:9
         biggest_walk = 0
 
         frequecy = Dict()
-        for group in combinations(author.groups)
+        total = binomial(length(author.groups), n)
+        println("\n\nTotal of combinations = $total")
+
+        prog =  Progress(total, desc="Combinations veryfied n=$n: ",
+                        barglyphs=BarGlyphs('|','█', ['▁' ,'▂' ,'▃' ,'▄' ,'▅' ,'▆', '▇'],' ','|',),
+                        barlen=10)
+        x = 0
+        for group in combinations(author.groups, n)
+            x+=1
+            ProgressMeter.next!(prog; showvalues = [(:x,x)])
+
             push!(frequecy, group => 0)
             last_yr = 0
 
-            for publication in author.publications
+            @simd for publication in author.publications
                 if pertinency(Set(group), publication.authors) && publication.year > last_yr
                     last_yr = publication.year
                     frequecy[group] += 1
@@ -91,6 +118,8 @@ function walk(author)
                 biggest_walk = frequecy[group]
             end
         end
+        ProgressMeter.finish!(prog)
+
         qtd_in_bgst_walk = qtd(biggest_walk, frequecy)
         walk *= "$n\t$biggest_walk\t$qtd_in_bgst_walk\n"
     end
@@ -105,7 +134,7 @@ function consummer!(ch::Channel, done::Channel)
     for author in ch
         if author == "Q" break end
         # println(author.groups, "\n================================\n")
-        @time steps = walk(author)
+        steps = walk(author)
 
         io = open(folder*author.cnpq, "w")
         write(io, steps)
@@ -118,9 +147,9 @@ end
 end #module
 
 using .MaxGrpFinder
+
 function runner()
     nworkers = 3
-    # print("aaaaaaaaaaa")
     conductor = Channel(300)
     done = Channel(nworkers)
 
