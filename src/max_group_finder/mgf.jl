@@ -1,74 +1,12 @@
 module MaxGrpFinder
 
-using Distributed
+# using Distributed
 using Combinatorics
 using ProgressMeter
 
 
-export producer!,
-       consummer!
+export consummer!
 
-mutable struct Publication
-    year     :: Int64
-    authors :: Set
-end
-
-
-mutable struct Author
-    cnpq         :: String
-    publications :: AbstractArray{Publication}
-    groups       :: Array
-    n_max_coauth :: Int64
-end
-
-
-norm(x) = lowercase(string(strip(x)))
-
-
-function producer!(ch::Channel, done::Channel)
-    folder = "/home/trettel/Documents/projects/HeroPublishing/src/max_group_finder/publications/"
-    all_files = readdir(folder)
-
-    for file in all_files
-        name_to_number = Dict{String, Int64}()
-        a_index = 0
-        publications::AbstractArray = []
-        groups = Set()
-        max_authors = 0
-        for line in readlines(folder*file)
-            au = Set()
-            yr, authors, _ = map(norm, split(line, " #@# "))
-            authors = Set(map(norm, split(authors, ';')))
-            new_authors = Set()
-
-            for a in authors
-                if a in keys(name_to_number)
-                    push!(new_authors, name_to_number[a])
-                else
-                    push!(name_to_number, a=>a_index)
-                    a_index += 1
-                    push!(new_authors, name_to_number[a])
-                end
-            end
-
-            try
-                yr = parse(Int64, yr)
-            catch
-                continue
-            end
-            if length(new_authors) > max_authors
-                max_authors = length(new_authors)
-            end
-
-            union!(groups, new_authors)
-            push!(publications, Publication(yr, new_authors))
-        end
-
-        put!(ch, Author(file, publications, collect(groups), max_authors))
-    end
-    put!(ch, "Q")
-    put!(done, 1)
-end
 
 
 function pertinency(seta, setb)
@@ -93,16 +31,7 @@ function verify_comb(author, n)
     biggest_walk = 0
     n_of_biggest_walks = 0
 
-    total = binomial(length(author.groups), n)
-    println("\n\nTotal of combinations = $total")
-
-    prog =  Progress(total, desc="Combinations veryfied n=$(n+1): ",
-                    barglyphs=BarGlyphs('|','█', ['▁' ,'▂' ,'▃' ,'▄' ,'▅' ,'▆', '▇'],' ','|',),
-                    barlen=10)
-    x = 0
     for group in combinations(author.groups, n)
-        ProgressMeter.next!(prog; showvalues = [(:x,x)])
-        x+=1
         walk = 0
         last_yr = 0
 
@@ -112,6 +41,7 @@ function verify_comb(author, n)
                 walk += 1
             end
         end
+
         if walk > biggest_walk
             biggest_walk = walk
             n_of_biggest_walks = 1
@@ -119,17 +49,17 @@ function verify_comb(author, n)
             n_of_biggest_walks += 1
         end
     end
-    ProgressMeter.finish!(prog)
     return biggest_walk, n_of_biggest_walks
 end
 
 
 function walk(author)
     walk_txt = "n_combinations\tbiggest_walk\tn_of_groups_in_tbiggest_walk\n"
-    print("\nParsing $(author.cnpq) having $(length(author.groups)) coauthors and $(length(author.publications)) publ \n")
+    # print("\nParsing $(author.cnpq) having $(length(author.groups)) coauthors and $(length(author.publications)) publ \n")
     for n in 1:9
         biggest_walk, n_of_biggest_walks = (0,0)
         if n <= author.n_max_coauth
+
             biggest_walk, n_of_biggest_walks = verify_comb(author, n)
         end
 
@@ -140,32 +70,43 @@ function walk(author)
 end
 
 
-function consummer!(ch::Channel, done::Channel)
-    folder = "/home/trettel/Documents/projects/HeroPublishing/src/max_group_finder/caminhar/"
+function consummer!(authors, in_folder, out_folder)
+    # folder = "/home/trettel/Documents/projects/HeroPublishing/src/max_group_finder/caminhar/"
+    authors = authors(in_folder)
 
-    for author in ch
-        if author == "Q" break end
+    total = length(authors.file_list)
+
+    prog =  Progress(total, desc="Authors to parse $total: ",
+                    barglyphs=BarGlyphs('|','█', ['▁' ,'▂' ,'▃' ,'▄' ,'▅' ,'▆', '▇'],' ','|',),
+                    barlen=10)
+
+    already_parsed = 0
+    for author in authors
+        already_parsed+=1
+        ProgressMeter.next!(prog; showvalues = [(:already_parsed,already_parsed)])
+
         steps = walk(author)
 
-        io = open(folder*author.cnpq, "w")
+        io = open(out_folder*author.cnpq, "w")
         write(io, steps)
         close(io)
-
     end
-    put!(done, 1)
+    ProgressMeter.finish!(prog)
 end
 
 end #module
 
 
+include("fetch_publications.jl")
 using .MaxGrpFinder
-function runner()
-    nworkers = 3
-    conductor = Channel(300)
-    done = Channel(nworkers)
+using .PublicationOrg
 
-    @async producer!(conductor, done)
-    consummer!(conductor, done)
+function runner()
+
+    in_folder = ARGS[1]
+    out_folder = ARGS[2]
+
+    consummer!(Authors, in_folder, out_folder)
 
     # for i=1:1 take!(done) end
 end
