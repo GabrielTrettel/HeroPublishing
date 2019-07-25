@@ -31,16 +31,18 @@ function verify_comb(author, n)
     biggest_walk = 0
     n_of_biggest_walks = 0
 
-    for group in combinations(author.groups, n)
+    for group in combinations(author.groups[n], n)
         walk = 0
         last_yr = 0
 
+        grp = Set(group)
         for publication in author.publications
             if Set(group) == publication.authors && publication.year > last_yr
                 last_yr = publication.year
                 walk += 1
             end
         end
+
 
         if walk > biggest_walk
             biggest_walk = walk
@@ -59,7 +61,6 @@ function walk(author)
     for n in 1:9
         biggest_walk, n_of_biggest_walks = (0,0)
         if n <= author.n_max_coauth
-
             biggest_walk, n_of_biggest_walks = verify_comb(author, n)
         end
 
