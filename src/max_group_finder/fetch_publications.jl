@@ -36,7 +36,7 @@ end
 norm(x) = lowercase(string(strip(x)))
 
 function Base.iterate(authors::Authors, state=1)
-    if length(authors.file_list) <= 0 || state==10 return (nothing) end
+    if length(authors.file_list) <= 0 || state ==10 return (nothing) end
 
     file = pop!(authors.file_list)
     folder = authors.folder
@@ -52,8 +52,8 @@ function Base.iterate(authors::Authors, state=1)
         au = Set()
         yr, authors, _ = map(norm, split(line, " #@# "))
         authors = Set(map(norm, split(authors, ';')))
+        # new_authors = authors
         new_authors = Set()
-
         for a in authors
             if a in keys(name_to_number)
                 push!(new_authors, name_to_number[a])
@@ -78,35 +78,42 @@ function Base.iterate(authors::Authors, state=1)
     end
 
     author = Author(file, publications, collect(unique_authors), Dict(), max_authors)
-    fill_groups_by_n!(author)
+    author.groups = groups_by_n(author)
+
 
     return (author, state+1)
 end
 
 
 
-function fill_groups_by_n!(author::Author) :: Author
+function groups_by_n(author::Author)
     publications = author.publications
-
-    # sort!(publications, by=p->p.year)
-
+    groups = Dict()
 
     for qtd_aut in 1:9
-        authors_in_common = map(x->x.authors, filter(x-> length(x.authors) == qtd_aut, publications))
-        qtd_aut_in_common = foldr(intersect, authors_in_common)
-        author.groups[qtd_aut] = qtd_aut_in_common
+        authors_in_common = filter(x-> length(x.authors) >= qtd_aut, publications)
+        authors_in_common = map(x->x.authors, authors_in_common)
+
+        if length(authors_in_common) <= 0 continue end
+        qtd_aut_in_common = Set(collect(Iterators.flatten(authors_in_common)))
+
+        push!(groups, qtd_aut=>collect(qtd_aut_in_common))
     end
+    return groups
 end
 
-
+# using JSON
 function teste()
     l = "/home/trettel/Documents/projects/HeroPublishing/src/max_group_finder/publications/"
 
     for a in Authors(l)
-        println("$(a.cnpq)   -> $(a.n_max_coauth)")
+        fill_groups_by_n!(a)
+        println("$(a.cnpq)   -> $(a.n_max_coauth)\n$(a.unique_authors)")
+        print(json(a.groups, 4))
+        break
     end
 end
 
-teste()
+# teste()
 
 end #module

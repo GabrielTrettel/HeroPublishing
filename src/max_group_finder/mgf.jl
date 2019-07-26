@@ -28,10 +28,18 @@ end
 
 
 function verify_comb(author, n)
+
     biggest_walk = 0
     n_of_biggest_walks = 0
+    # @show typeof(author.groups[n])
+    total = (binomial(length(author.groups[n]),n))
+
+    prog =  Progress(total, desc="\t\33[37m Parsing $(author.cnpq) p=$(length(author.groups[n])) n=$n \t comb=$total\t",
+                    barglyphs=BarGlyphs('|','█', ['▁' ,'▂' ,'▃' ,'▄' ,'▅' ,'▆', '▇'],' ','|',),
+                    barlen=10)
 
     for group in combinations(author.groups[n], n)
+        ProgressMeter.next!(prog)
         walk = 0
         last_yr = 0
 
@@ -51,16 +59,18 @@ function verify_comb(author, n)
             n_of_biggest_walks += 1
         end
     end
+    ProgressMeter.finish!(prog)
+
     return biggest_walk, n_of_biggest_walks
 end
 
 
 function walk(author)
     walk_txt = "n_combinations\tbiggest_walk\tn_of_groups_in_tbiggest_walk\n"
-    # print("\nParsing $(author.cnpq) having $(length(author.groups)) coauthors and $(length(author.publications)) publ \n")
     for n in 1:9
         biggest_walk, n_of_biggest_walks = (0,0)
-        if n <= author.n_max_coauth
+
+        if haskey(author.groups, n)
             biggest_walk, n_of_biggest_walks = verify_comb(author, n)
         end
 
@@ -77,22 +87,16 @@ function consummer!(authors, in_folder, out_folder)
 
     total = length(authors.file_list)
 
-    prog =  Progress(total, desc="Authors to parse $total: ",
-                    barglyphs=BarGlyphs('|','█', ['▁' ,'▂' ,'▃' ,'▄' ,'▅' ,'▆', '▇'],' ','|',),
-                    barlen=10)
-
     already_parsed = 0
     for author in authors
         already_parsed+=1
-        ProgressMeter.next!(prog; showvalues = [(:already_parsed,already_parsed)])
+        println("\33[35m\nParsing $already_parsed/$total")
 
         steps = walk(author)
-
         io = open(out_folder*author.cnpq, "w")
         write(io, steps)
         close(io)
     end
-    ProgressMeter.finish!(prog)
 end
 
 end #module
