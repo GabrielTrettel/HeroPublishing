@@ -4,37 +4,18 @@ module MaxGrpFinder
 using Combinatorics
 using ProgressMeter
 
-
 export consummer!
 
+include("fetch_publications.jl")
+using .PublicationOrg
 
-
-function pertinency(seta, setb)
-    for a in seta
-        if !(a in setb) return false end
-    end
-    return true
-end
-
-
-function qtd(n, dic)
-    i = 0
-    for v in values(dic)
-        if n == v i+=1 end
-    end
-    return i
-
-end
-
-
-function verify_comb(author, n)
+function verify_comb(author::Author, n::Integer)
 
     biggest_walk = 0
     n_of_biggest_walks = 0
-    # @show typeof(author.groups[n])
     total = (binomial(length(author.groups[n]),n))
 
-    prog =  Progress(total, desc="\t\33[37m Parsing $(author.cnpq) p=$(length(author.groups[n])) n=$n \t comb=$total\t",
+    prog =  Progress(total, desc="\t\33[37m p=$(length(author.groups[n])) n=$n \t comb=$total\t",
                     barglyphs=BarGlyphs('|','█', ['▁' ,'▂' ,'▃' ,'▄' ,'▅' ,'▆', '▇'],' ','|',),
                     barlen=10)
 
@@ -65,53 +46,69 @@ function verify_comb(author, n)
 end
 
 
-function walk(author)
+function walk(author::Author)
     walk_txt = "n_combinations\tbiggest_walk\tn_of_groups_in_tbiggest_walk\n"
+    println("\t\33[37m Parsing $(author.cnpq)")
     for n in 1:9
         biggest_walk, n_of_biggest_walks = (0,0)
 
         if haskey(author.groups, n)
+            total = (binomial(length(author.groups[n]),n))
+            if total >= 5_971_283
+                println("\t\33[37m p=$(length(author.groups[n])) n=$n \t comb=$total\t")
+                return nothing
+            end
+
             biggest_walk, n_of_biggest_walks = verify_comb(author, n)
         end
 
         walk_txt *= "$(n+1)\t$biggest_walk\t$n_of_biggest_walks\n"
     end
 
+    println("\t\33[37m Done here")
     return walk_txt
 end
 
 
-function consummer!(authors, in_folder, out_folder)
+function consummer!(in_folder::String, out_folder::String)
     # folder = "/home/trettel/Documents/projects/HeroPublishing/src/max_group_finder/caminhar/"
-    authors = authors(in_folder)
+    authors = Authors(in_folder)
 
     total = length(authors.file_list)
-
+    to_hard_to_parse = ""
     already_parsed = 0
+
     for author in authors
         already_parsed+=1
-        println("\33[35m\nParsing $already_parsed/$total")
+        println("\33[35m Parsing $already_parsed/$total")
 
         steps = walk(author)
+        if steps == nothing
+            println("\t\33[31m Too hard to parse, sorry...")
+            to_hard_to_parse *= author.cnpq * "\n"
+            continue
+        end
+
         io = open(out_folder*author.cnpq, "w")
-        write(io, steps)
-        close(io)
+        write(io, steps); close(io)
+    end
+    if length(to_hard_to_parse) > 0
+        io = open("to_hard_to_parse.list")
+        write(io, to_hard_to_parse); close(io)
     end
 end
 
 end #module
 
 
-include("fetch_publications.jl")
 using .MaxGrpFinder
-using .PublicationOrg
 
 function runner()
 
     in_folder = ARGS[1]
     out_folder = ARGS[2]
 
-    consummer!(Authors, in_folder, out_folder)
+    consummer!(in_folder, out_folder)
 
     # for i=1:1 take!(done) end
 end

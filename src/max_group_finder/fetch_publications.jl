@@ -36,7 +36,7 @@ end
 norm(x) = lowercase(string(strip(x)))
 
 function Base.iterate(authors::Authors, state=1)
-    if length(authors.file_list) <= 0 || state ==10 return (nothing) end
+    if length(authors.file_list) <= 0 return (nothing) end
 
     file = pop!(authors.file_list)
     folder = authors.folder
