@@ -1,116 +1,36 @@
-module MaxGrpFinder
+using Distributed
+n_of_workers_available = parse(Int64, ARGS[1])
+addprocs(n_of_workers_available)
 
-# using Distributed
-using Combinatorics
-using ProgressMeter
-
-export consummer!
-
-include("fetch_publications.jl")
-using .PublicationOrg
-
-function verify_comb(author::Author, n::Integer)
-
-    biggest_walk = 0
-    n_of_biggest_walks = 0
-    total = (binomial(length(author.groups[n]),n))
-
-    prog =  Progress(total, desc="\t\33[37m p=$(length(author.groups[n])) n=$n \t comb=$total\t",
-                    barglyphs=BarGlyphs('|','█', ['▁' ,'▂' ,'▃' ,'▄' ,'▅' ,'▆', '▇'],' ','|',),
-                    barlen=10)
-
-    for group in combinations(author.groups[n], n)
-        ProgressMeter.next!(prog)
-        walk = 0
-        last_yr = 0
-
-        grp = Set(group)
-        for publication in author.publications
-            if Set(group) == publication.authors && publication.year > last_yr
-                last_yr = publication.year
-                walk += 1
-            end
-        end
-
-
-        if walk > biggest_walk
-            biggest_walk = walk
-            n_of_biggest_walks = 1
-        elseif walk == biggest_walk && walk != 0
-            n_of_biggest_walks += 1
-        end
-    end
-    ProgressMeter.finish!(prog)
-
-    return biggest_walk, n_of_biggest_walks
-end
-
-
-function walk(author::Author)
-    walk_txt = "n_combinations\tbiggest_walk\tn_of_groups_in_tbiggest_walk\n"
-    println("\t\33[37m Parsing $(author.cnpq)")
-    for n in 1:9
-        biggest_walk, n_of_biggest_walks = (0,0)
-
-        if haskey(author.groups, n)
-            total = (binomial(length(author.groups[n]),n))
-            if total >= 5_971_283
-                println("\t\33[37m p=$(length(author.groups[n])) n=$n \t comb=$total\t")
-                return nothing
-            end
-
-            biggest_walk, n_of_biggest_walks = verify_comb(author, n)
-        end
-
-        walk_txt *= "$(n+1)\t$biggest_walk\t$n_of_biggest_walks\n"
-    end
-
-    println("\t\33[37m Done here")
-    return walk_txt
-end
-
-
-function consummer!(in_folder::String, out_folder::String)
-    # folder = "/home/trettel/Documents/projects/HeroPublishing/src/max_group_finder/caminhar/"
-    authors = Authors(in_folder)
-
-    total = length(authors.file_list)
-    to_hard_to_parse = ""
-    already_parsed = 0
-
-    for author in authors
-        already_parsed+=1
-        println("\33[35m Parsing $already_parsed/$total")
-
-        steps = walk(author)
-        if steps == nothing
-            println("\t\33[31m Too hard to parse, sorry...")
-            to_hard_to_parse *= author.cnpq * "\n"
-            continue
-        end
-
-        io = open(out_folder*author.cnpq, "w")
-        write(io, steps); close(io)
-    end
-    if length(to_hard_to_parse) > 0
-        io = open("to_hard_to_parse.list")
-        write(io, to_hard_to_parse); close(io)
-    end
-end
-
-end #module
-
-
-using .MaxGrpFinder
+@everywhere import Base.Iterators.partition
+@everywhere include("walker.jl")
+@everywhere using .MaxGrpFinder
+@everywhere using ProgressMeter
 
 function runner()
+    n_of_workers_available = parse(Int64, ARGS[1])
+    in_folder = ARGS[2]
+    out_folder = ARGS[3]
 
-    in_folder = ARGS[1]
-    out_folder = ARGS[2]
+    files = readdir(in_folder)
+    chunk_size = Int64(ceil(length(files) / n_of_workers_available))
 
-    consummer!(in_folder, out_folder)
+    println(n_of_workers_available)
 
-    # for i=1:1 take!(done) end
+
+    p = Progress(length(files))
+    channel = RemoteChannel(()->Channel{Bool}(length(files)), 1)
+    @async while take!(channel)
+        next!(p)
+    end
+
+    functions = [consummer for _ in 1:n_of_workers_available]
+    chunk_for_each_worker  = map(x->[in_folder, out_folder, channel, x], collect(partition(files, chunk_size)))
+
+
+    pmap((fun,input)->fun(input...), functions, chunk_for_each_worker)
+    put!(channel, false)
+    
 end
 
 runner()

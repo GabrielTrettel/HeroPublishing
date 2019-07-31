@@ -1,6 +1,5 @@
 module PublicationOrg
 
-
 using Combinatorics
 using ProgressMeter
 
@@ -26,8 +25,11 @@ end
 mutable struct Authors
     folder :: String
     file_list :: Array{String}
-    function Authors(infolder)
-        fl = readdir(infolder)
+    function Authors(infolder, fl=nothing)
+        if fl == nothing
+            fl = readdir(infolder)
+        end
+
         new(infolder, fl)
     end
 end
@@ -52,6 +54,8 @@ function Base.iterate(authors::Authors, state=1)
         au = Set()
         yr, authors, _ = map(norm, split(line, " #@# "))
         authors = Set(map(norm, split(authors, ';')))
+        if length(authors) >= 100 continue end
+
         # new_authors = authors
         new_authors = Set()
         for a in authors
