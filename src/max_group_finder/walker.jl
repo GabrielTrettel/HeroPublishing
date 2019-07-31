@@ -81,7 +81,7 @@ function consummer(in_folder::String, out_folder::String, ch::RemoteChannel, fil
     for author in authors
         already_parsed+=1
         # println("\33[35m Parsing $already_parsed/$total")
-
+        put!(ch, true)
         steps = walk(author)
         if steps == nothing
             # println("\t\33[31m Too hard to parse, sorry...")
@@ -91,8 +91,8 @@ function consummer(in_folder::String, out_folder::String, ch::RemoteChannel, fil
 
         io = open(out_folder*author.cnpq, "w")
         write(io, steps); close(io)
-        put!(ch, true)
     end
+
     if length(to_hard_to_parse) > 0
         i = 0
         file_name = "to_hard_to_parse"*string(i)

@@ -18,10 +18,16 @@ function runner()
     println(n_of_workers_available)
 
 
-    p = Progress(length(files))
-    channel = RemoteChannel(()->Channel{Bool}(length(files)), 1)
+    iter = 0
+    total = length(files)
+
+    p = Progress(total, barlen=20)
+
+    channel = RemoteChannel(()->Channel{Bool}(total), 1)
+
     @async while take!(channel)
-        next!(p)
+        ProgressMeter.next!(p; showvalues = [(:iter,iter), (:total,total)])
+        iter+=1
     end
 
     functions = [consummer for _ in 1:n_of_workers_available]
@@ -30,7 +36,7 @@ function runner()
 
     pmap((fun,input)->fun(input...), functions, chunk_for_each_worker)
     put!(channel, false)
-    
+
 end
 
 runner()
