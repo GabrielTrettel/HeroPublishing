@@ -52,7 +52,7 @@ function Base.iterate(authors::Authors, state=1)
 
     for line in readlines(folder*file)
         au = Set()
-        yr, authors, _ = map(norm, split(line, " #@# "))
+        yr, authors = map(norm, split(line, " @ "))
         authors = Set(map(norm, split(authors, ';')))
         if length(authors) >= 100 continue end
 

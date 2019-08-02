@@ -1,6 +1,7 @@
 using Distributed
 n_of_workers_available = parse(Int64, ARGS[1])
 addprocs(n_of_workers_available)
+n_of_workers_available-=1
 
 @everywhere import Base.Iterators.partition
 @everywhere include("walker.jl")
@@ -34,9 +35,9 @@ function runner()
     chunk_for_each_worker  = map(x->[in_folder, out_folder, channel, x], collect(partition(files, chunk_size)))
 
 
-    pmap((fun,input)->fun(input...), functions, chunk_for_each_worker)
+    pmap((fun,inputs)->fun(inputs...), functions, chunk_for_each_worker)
     put!(channel, false)
 
 end
 
-runner()
+@time runner()
