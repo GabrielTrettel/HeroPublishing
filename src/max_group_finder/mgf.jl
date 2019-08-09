@@ -13,8 +13,13 @@ function runner()
     in_folder = ARGS[2]
     out_folder = ARGS[3]
 
-    files = readdir(in_folder)
-    chunk_size = Int64(ceil(length(files) / n_of_workers_available))
+
+
+
+    files = intersect(Set(readdir(in_folder)), Set(map(x->string(strip(x)), readlines(ARGS[4])))) |> collect
+
+
+    @show chunk_size = ceil(length(files) / n_of_workers_available) |> Int64
 
     println(n_of_workers_available)
 
