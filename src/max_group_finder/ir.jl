@@ -1,6 +1,4 @@
 using ProgressMeter
-using IterTools
-
 
 function fetch_walks(walk_folder::String, out_folder::String)
     files = readdir(walk_folder)
@@ -9,12 +7,10 @@ function fetch_walks(walk_folder::String, out_folder::String)
     data = Dict([(k , Int64[]) for k in 2:10])
 
     for file in files
-        # @show file
         ProgressMeter.next!(p)
         lines = map(x->split(x, "\t"), readlines("$walk_folder/$file"))[2:end]
         lines = [map(f->parse(Int64,f), line) for line in lines]
 
-        # @show lines
         for (n, bw, _) in lines
             push!(data[n], bw)
         end
@@ -29,7 +25,6 @@ function fetch_walks(walk_folder::String, out_folder::String)
 
     ProgressMeter.finish!(p)
 end
-
 
 
 function main()
