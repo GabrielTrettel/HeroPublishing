@@ -1,2 +1,6 @@
 __pycache__
 src/max_group_finder/caminhar*
+curriculos-xml*
+graph
+*.pdf
+*.tar.gz
