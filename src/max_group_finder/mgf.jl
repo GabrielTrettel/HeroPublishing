@@ -1,4 +1,5 @@
 using Distributed
+
 n_of_workers_available = parse(Int64, ARGS[1])
 addprocs(n_of_workers_available)
 n_of_workers_available-=1
@@ -13,11 +14,9 @@ function runner()
     in_folder = ARGS[2]
     out_folder = ARGS[3]
 
-
-
-
-    files = intersect(Set(readdir(in_folder)), Set(map(x->string(strip(x)), readlines(ARGS[4])))) |> collect
-
+    files = intersect(Set(readdir(in_folder)), Set(map(x->string(strip(x)), readlines(ARGS[4]))))
+    setdiff!(files, Set(readdir(out_folder)))
+    files = collect(files)
 
     @show chunk_size = ceil(length(files) / n_of_workers_available) |> Int64
 
@@ -46,3 +45,5 @@ function runner()
 end
 
 @time runner()
+
+setdiff!(Set([1,2,3,4]), Set([1,2,6,7]))
