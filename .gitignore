@@ -1,4 +1,2 @@
 __pycache__
-curriculos-xml
-curriculos-xml-output
-*.xml
+src/max_group_finder/caminhar*
